@@ -1,0 +1,338 @@
+/**
+  ******************************************************************************
+  * File Name          : main.c
+  * Description        : Main program body
+  ******************************************************************************
+  *
+  * COPYRIGHT(c) 2016 STMicroelectronics
+  *
+  * Redistribution and use in source and binary forms, with or without modification,
+  * are permitted provided that the following conditions are met:
+  *   1. Redistributions of source code must retain the above copyright notice,
+  *      this list of conditions and the following disclaimer.
+  *   2. Redistributions in binary form must reproduce the above copyright notice,
+  *      this list of conditions and the following disclaimer in the documentation
+  *      and/or other materials provided with the distribution.
+  *   3. Neither the name of STMicroelectronics nor the names of its contributors
+  *      may be used to endorse or promote products derived from this software
+  *      without specific prior written permission.
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  *
+  ******************************************************************************
+  */
+/* Includes ------------------------------------------------------------------*/
+#include "stm32f1xx_hal.h"
+#include "adc.h"
+#include "spi.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+#include "stm32f1xx_it.h"
+#include <st7586s.h>
+
+
+
+
+#include <stdbool.h>
+
+
+
+#define GSA_ON		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_BIT_SET);				//GPIO_BIT_SET
+#define GSA_OFF		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_BIT_RESET);				//GPIO_BIT_RESET
+
+#define BEEP_ON		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_BIT_SET);
+#define BEEP_OFF	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_BIT_RESET);
+
+
+#define FILTER_DEGREE		5
+#define FILTER_A				0.25
+#define	FILTER_B				1-FILTER_A
+
+
+
+enum {
+
+	ON,
+	OFF,
+	FREE
+
+} button;
+
+
+
+uint8_t button1;
+uint32_t tickcounter;
+int button1_state = OFF;
+uint32_t iu = 0;
+
+uint32_t Battery_V = 0;
+
+void SystemClock_Config(void);
+bool Check_Button1( void );
+void Vbat_Filter( uint32_t v_bat );
+
+
+int main(void)
+{ 
+
+	
+//	HAL_NVIC_EnableIRQ( SysTick_IRQn );
+	//SystemClock_Config();
+	
+  HAL_Init();
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_ADC1_Init();
+  MX_SPI2_Init();
+  MX_TIM1_Init();
+  MX_TIM3_Init();
+  MX_TIM16_Init();
+  MX_TIM17_Init();
+  MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
+
+	
+	uint8_t adcenablestatus =  ADC_Enable( &hadc1 );
+	
+	__enable_irq();
+	
+	//Disp_Set();
+	
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
+	//Disp_Init();
+	//NVIC_EnableIRQ(ADC1_IRQn);
+
+	DISP_ON;
+	HAL_Delay(500);
+	
+	DISP_RESET_ON;
+	DISP_RESET_OFF;
+	
+	
+	#ifdef USE_DEMO
+		LCD_initial();
+	#endif
+	
+	//Write( DISP_DATA, 0x23);
+  while (1)
+  {
+		uint8_t ggg = 0x23;
+			#ifdef USE_DEMO
+//		
+//					Full_on();
+//					HAL_Delay(0x3E8);			//Delay_ms(1000);
+		//			Horizontal_line();
+//					HAL_Delay(0x3E8);			//Delay_ms(1000);
+		//			Vertical_line();
+//					HAL_Delay(0x3E8);			//Delay_ms(1000);
+					//Show_Graph(code_pic);
+					HAL_Delay(0x3E8);			//Delay_ms(1000);
+
+//						Full_on();
+//						HAL_Delay(0x3E8);
+//						Clear();
+		pic_buf_clr();
+		
+		put_pixel(iu % 240, iu / 240, 1);
+		iu > 0x3840 ? iu = 0: iu++;	
+						
+		
+			
+		
+			#endif
+
+
+
+
+  }
+
+}
+
+/** System Clock Configuration
+*/
+void SystemClock_Config(void)
+{
+
+  RCC_OscInitTypeDef RCC_OscInitStruct;
+  RCC_ClkInitTypeDef RCC_ClkInitStruct;
+  RCC_PeriphCLKInitTypeDef PeriphClkInit;
+
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL2;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
+
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0);
+
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV2;
+  HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
+
+  HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
+
+  HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+
+  /* SysTick_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+	
+	SystemCoreClockUpdate();
+}
+
+/* USER CODE BEGIN 4 */
+
+
+bool Check_Button1( void )
+{
+
+		if( HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET)
+			return true;
+		else
+			return false;
+
+};
+
+
+//void SysTick_Handler( void )
+//{
+
+//	
+//	HAL_IncTick();
+//  HAL_SYSTICK_IRQHandler();
+//	
+//	tickcounter++;
+//	uint32_t adcstat;
+//			
+//			
+//	Vbat_Filter( HAL_ADC_GetValue( &hadc1) );
+//	
+//	
+//	adcstat = HAL_ADC_Start( &hadc1 );
+//	
+//	
+//	if(tickcounter % 100 == 0)
+//	{
+//		button1 = button1 << 1;
+//	
+//		if( !Check_Button1() )
+//			button1 |= 1;
+//		
+//		if( tickcounter % 200 == 0)
+//		{
+//			
+//			
+//			BEEP_ON;
+//		}
+//		else
+//		{
+//			BEEP_OFF;
+//		}
+//		
+
+//		
+//		
+//	}
+//	
+//	
+//	if( button1 == 0xFF && button1_state == OFF)
+//	{
+//	//	GSA_ON;
+//		button1_state = ON;
+//		button1 = 0;
+//		
+//	};
+//	
+//	
+//	if(	button1 == 0xFF && button1_state == ON)
+//	{
+//	//	GSA_OFF;
+//		button1_state = OFF;
+//		button1= 0;
+//	}
+//	
+//};
+
+
+
+
+
+void ADC1_IRQHandler( void )
+{
+	uint32_t adcval;
+	adcval = HAL_ADC_GetValue( &hadc1);
+	
+};
+
+void  Vbat_Filter( uint32_t v_bat )
+{
+		 
+	
+		Battery_V = (FILTER_A * Battery_V + FILTER_B * v_bat) / (1 << FILTER_DEGREE);
+
+};
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+/* USER CODE END 4 */
+
+#ifdef USE_FULL_ASSERT
+
+/**
+   * @brief Reports the name of the source file and the source line number
+   * where the assert_param error has occurred.
+   * @param file: pointer to the source file name
+   * @param line: assert_param error line source number
+   * @retval None
+   */
+void assert_failed(uint8_t* file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+    ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+
+}
+
+#endif
+
+/**
+  * @}
+  */ 
+
+/**
+  * @}
+*/ 
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
